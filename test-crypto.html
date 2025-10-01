@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aeturnum - Crypto Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #0a0a0a;
+            color: #fff;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 30px;
+        }
+        h1 {
+            color: #ef4444;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #999;
+            margin-bottom: 30px;
+        }
+        textarea, input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: #fff;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        button {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            word-break: break-all;
+        }
+        .success {
+            border-left: 4px solid #10b981;
+        }
+        .error {
+            border-left: 4px solid #ef4444;
+        }
+        .info {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: 600;
+            color: #ef4444;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Aeturnum Crypto Test</h1>
+        <p class="subtitle">Test encryption and decryption locally</p>
+
+        <div class="info">
+            <strong>ℹ️ Purpose:</strong> This page tests the encryption/decryption functions that will be used in Aeturnum.
+            All operations happen in your browser - nothing is sent to any server.
+        </div>
+
+        <!-- Encryption Section -->
+        <div>
+            <h2>Encrypt Data</h2>
+            <label>Message to Encrypt:</label>
+            <textarea id="plaintext" rows="4" placeholder="Enter your secret message...">My Bitcoin seed phrase: abandon abandon abandon...</textarea>
+            
+            <label>Password:</label>
+            <input type="password" id="encryptPassword" placeholder="Enter a strong password">
+            
+            <button onclick="encrypt()">🔒 Encrypt</button>
+            
+            <div id="encryptResult"></div>
+        </div>
+
+        <hr style="margin: 40px 0; border-color: rgba(255,255,255,0.1);">
+
+        <!-- Decryption Section -->
+        <div>
+            <h2>Decrypt Data</h2>
+            <label>Encrypted Data:</label>
+            <textarea id="encrypted" rows="4" placeholder="Paste encrypted data (format: iv:salt:ciphertext)"></textarea>
+            
+            <label>Password:</label>
+            <input type="password" id="decryptPassword" placeholder="Enter the password">
+            
+            <button onclick="decrypt()">🔓 Decrypt</button>
+            
+            <div id="decryptResult"></div>
+        </div>
+
+        <hr style="margin: 40px 0; border-color: rgba(255,255,255,0.1);">
+
+        <!-- Test Section -->
+        <div>
+            <h2>Quick Test</h2>
+            <p style="color: #999;">Test the full encrypt → decrypt cycle with one click</p>
+            <button onclick="runTest()">🧪 Run Full Test</button>
+            <div id="testResult"></div>
+        </div>
+    </div>
+
+    <script>
+        // Crypto utilities (same as in the main app)
+        const PBKDF2_ITERATIONS = 100000;
+        const KEY_LENGTH = 256;
+        const SALT_LENGTH = 16;
+        const IV_LENGTH = 12;
+
+        function generateSalt() {
+            return crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+        }
+
+        function generateIV() {
+            return crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+        }
+
+        async function deriveKey(password, salt) {
+            const encoder = new TextEncoder();
+            const passwordBuffer = encoder.encode(password);
+            
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                passwordBuffer,
+                'PBKDF2',
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            
+            return crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: PBKDF2_ITERATIONS,
+                    hash: 'SHA-256'
+                },
+                keyMaterial,
+                { name: 'AES-GCM', length: KEY_LENGTH },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        function arrayBufferToBase64(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        async function encryptData(data, password) {
+            const encoder = new TextEncoder();
+            const dataBuffer = encoder.encode(data);
+            
+            const salt = generateSalt();
+            const iv = generateIV();
+            const key = await deriveKey(password, salt);
+            
+            const ciphertext = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv: iv },
+                key,
+                dataBuffer
+            );
+            
+            const ivBase64 = arrayBufferToBase64(iv);
+            const saltBase64 = arrayBufferToBase64(salt);
+            const ciphertextBase64 = arrayBufferToBase64(ciphertext);
+            
+            return `${ivBase64}:${saltBase64}:${ciphertextBase64}`;
+        }
+
+        async function decryptData(encryptedData, password) {
+            const [ivBase64, saltBase64, ciphertextBase64] = encryptedData.split(':');
+            
+            if (!ivBase64 || !saltBase64 || !ciphertextBase64) {
+                throw new Error('Invalid encrypted data format');
+            }
+            
+            const iv = new Uint8Array(base64ToArrayBuffer(ivBase64));
+            const salt = new Uint8Array(base64ToArrayBuffer(saltBase64));
+            const ciphertext = base64ToArrayBuffer(ciphertextBase64);
+            
+            const key = await deriveKey(password, salt);
+            
+            const decrypted = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: iv },
+                key,
+                ciphertext
+            );
+            
+            const decoder = new TextDecoder();
+            return decoder.decode(decrypted);
+        }
+
+        // UI Functions
+        async function encrypt() {
+            const plaintext = document.getElementById('plaintext').value;
+            const password = document.getElementById('encryptPassword').value;
+            const resultDiv = document.getElementById('encryptResult');
+
+            if (!plaintext || !password) {
+                resultDiv.innerHTML = '<div class="result error">❌ Please enter both message and password</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div class="result">⏳ Encrypting...</div>';
+                const encrypted = await encryptData(plaintext, password);
+                
+                // Auto-fill decrypt section
+                document.getElementById('encrypted').value = encrypted;
+                document.getElementById('decryptPassword').value = password;
+
+                resultDiv.innerHTML = `
+                    <div class="result success">
+                        <strong>✅ Encrypted Successfully!</strong><br><br>
+                        <strong>Encrypted Data:</strong><br>
+                        <code>${encrypted}</code><br><br>
+                        <strong>Size:</strong> ${encrypted.length} bytes<br>
+                        <strong>Format:</strong> iv:salt:ciphertext (all base64)
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">❌ Encryption failed: ${error.message}</div>`;
+            }
+        }
+
+        async function decrypt() {
+            const encrypted = document.getElementById('encrypted').value;
+            const password = document.getElementById('decryptPassword').value;
+            const resultDiv = document.getElementById('decryptResult');
+
+            if (!encrypted || !password) {
+                resultDiv.innerHTML = '<div class="result error">❌ Please enter both encrypted data and password</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div class="result">⏳ Decrypting...</div>';
+                const decrypted = await decryptData(encrypted, password);
+                
+                resultDiv.innerHTML = `
+                    <div class="result success">
+                        <strong>✅ Decrypted Successfully!</strong><br><br>
+                        <strong>Original Message:</strong><br>
+                        <code>${decrypted}</code>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">❌ Decryption failed: ${error.message}<br><br>Possible reasons:<br>• Wrong password<br>• Corrupted data<br>• Invalid format</div>`;
+            }
+        }
+
+        async function runTest() {
+            const resultDiv = document.getElementById('testResult');
+            resultDiv.innerHTML = '<div class="result">⏳ Running test...</div>';
+
+            try {
+                const testMessage = "This is a test message for Aeturnum!";
+                const testPassword = "TestP@ssw0rd123!";
+
+                // Encrypt
+                const encrypted = await encryptData(testMessage, testPassword);
+                
+                // Decrypt
+                const decrypted = await decryptData(encrypted, testPassword);
+                
+                // Verify
+                if (decrypted === testMessage) {
+                    resultDiv.innerHTML = `
+                        <div class="result success">
+                            <strong>✅ All Tests Passed!</strong><br><br>
+                            <strong>Original:</strong> ${testMessage}<br>
+                            <strong>Encrypted:</strong> ${encrypted.substring(0, 50)}...<br>
+                            <strong>Decrypted:</strong> ${decrypted}<br><br>
+                            <strong>✓ Encryption works correctly</strong><br>
+                            <strong>✓ Decryption works correctly</strong><br>
+                            <strong>✓ Data integrity verified</strong>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = '<div class="result error">❌ Test failed: Decrypted data does not match original</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">❌ Test failed: ${error.message}</div>`;
+            }
+        }
+
+        // Run test on page load
+        window.addEventListener('load', () => {
+            console.log('🔥 Aeturnum Crypto Test Page Loaded');
+            console.log('All encryption happens client-side in your browser');
+        });
+    </script>
+</body>
+</html>

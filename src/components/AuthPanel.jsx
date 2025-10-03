@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Shield, Loader2, AlertCircle } from 'lucide-react';
+import { Shield, Loader2, AlertCircle, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 
-export default function AuthPanel() {
+export default function AuthPanel({ onClose, onSuccess }) {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState('signin');
   const [email, setEmail] = useState('');
@@ -26,6 +26,7 @@ export default function AuthPanel() {
       if (mode === 'signin') {
         const { error: signInError } = await signIn({ email, password });
         if (signInError) throw signInError;
+        onSuccess?.('signin');
       } else {
         const { error: signUpError } = await signUp({ email, password });
         if (signUpError) throw signUpError;
@@ -40,7 +41,17 @@ export default function AuthPanel() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="max-w-md w-full">
+      <div className="max-w-md w-full relative">
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute -top-10 right-0 text-gray-400 hover:text-white transition-colors"
+            aria-label="Close authentication"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
         <div className="card">
           <div className="text-center mb-6">
             <div className="flex items-center justify-center gap-2 mb-4">

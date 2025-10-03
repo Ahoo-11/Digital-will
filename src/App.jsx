@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Shield, Github, ExternalLink, LogOut, Loader2, AlertCircle } from 'lucide-react';
+import { Shield, LogOut, Loader2, AlertCircle } from 'lucide-react';
 import VaultWizard from './components/VaultWizard';
 import TransactionBuilder from './components/TransactionBuilder';
 import VaultDashboard from './components/VaultDashboard';
@@ -15,6 +15,37 @@ function App() {
   const [vaultData, setVaultData] = useState(null);
   const [activeTool, setActiveTool] = useState('build');
   const [actionError, setActionError] = useState(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+
+  const openAuthModal = (action = null) => {
+    setPendingAction(action);
+    setShowAuthModal(true);
+  };
+
+  const handleAuthClose = () => {
+    setShowAuthModal(false);
+    setPendingAction(null);
+  };
+
+  const handleAuthSuccess = () => {
+    setShowAuthModal(false);
+
+    if (!pendingAction) {
+      return;
+    }
+
+    if (user) {
+      if (pendingAction === 'create') {
+        setCurrentView('create');
+      } else if (pendingAction === 'dashboard') {
+        setCurrentView('dashboard');
+      }
+      setPendingAction(null);
+    }
+    // When user state updates shortly after authentication, pendingAction will
+    // be consumed by the effect watching [user, pendingAction].
+  };
 
   useEffect(() => {
     if (vaultData) {
@@ -24,6 +55,23 @@ function App() {
       }
     }
   }, [vaults]);
+
+  useEffect(() => {
+    if (!user) {
+      setCurrentView('home');
+      setVaultData(null);
+      return;
+    }
+
+    if (pendingAction) {
+      if (pendingAction === 'create') {
+        setCurrentView('create');
+      } else if (pendingAction === 'dashboard') {
+        setCurrentView('dashboard');
+      }
+      setPendingAction(null);
+    }
+  }, [user, pendingAction]);
 
   const isDashboardAvailable = useMemo(() => vaults.length > 0, [vaults]);
 
@@ -46,7 +94,19 @@ function App() {
     setCurrentView('home');
   };
 
+  const handleCreateVaultClick = () => {
+    if (!user) {
+      openAuthModal('create');
+      return;
+    }
+    setCurrentView('create');
+  };
+
   const handleManageVaults = () => {
+    if (!user) {
+      openAuthModal('dashboard');
+      return;
+    }
     setCurrentView('dashboard');
   };
 
@@ -75,6 +135,8 @@ function App() {
     await signOut();
     setVaultData(null);
     setCurrentView('home');
+    setPendingAction(null);
+    setShowAuthModal(false);
   };
 
   if (authLoading) {
@@ -84,10 +146,6 @@ function App() {
         Loading Aeturnum...
       </div>
     );
-  }
-
-  if (!user) {
-    return <AuthPanel />;
   }
 
   return (
@@ -105,23 +163,6 @@ function App() {
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-4 text-sm">
               <div className="flex items-center space-x-4">
-                <a
-                  href="https://github.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  <Github className="w-5 h-5" />
-                </a>
-                <a
-                  href="https://signetfaucet.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-gray-400 hover:text-white transition-colors flex items-center"
-                >
-                  Get Signet Coins
-                  <ExternalLink className="w-4 h-4 ml-1" />
-                </a>
                 {isDashboardAvailable && (
                   <button
                     onClick={handleManageVaults}
@@ -132,17 +173,33 @@ function App() {
                 )}
               </div>
               <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <div className="text-white font-medium">{user.email}</div>
-                  <div className="text-xs text-gray-400">Signed in</div>
-                </div>
-                <button
-                  onClick={handleSignOut}
-                  className="btn-secondary text-sm inline-flex items-center gap-2"
-                >
-                  <LogOut className="w-4 h-4" />
-                  Sign Out
-                </button>
+                {user ? (
+                  <div className="text-right">
+                    <div className="text-white font-medium">{user.email}</div>
+                    <div className="text-xs text-gray-400">Signed in</div>
+                  </div>
+                ) : (
+                  <div className="text-right">
+                    <div className="text-white font-medium">Guest</div>
+                    <div className="text-xs text-gray-400">Please sign in</div>
+                  </div>
+                )}
+                {user ? (
+                  <button
+                    onClick={handleSignOut}
+                    className="btn-secondary text-sm inline-flex items-center gap-2"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Sign Out
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => openAuthModal('signin')}
+                    className="btn-secondary text-sm"
+                  >
+                    Sign In
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -165,7 +222,7 @@ function App() {
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <button
-                  onClick={() => setCurrentView('create')}
+                  onClick={handleCreateVaultClick}
                   className="btn-primary text-lg px-8 py-4"
                 >
                   Create Your Vault
@@ -370,6 +427,12 @@ function App() {
           </div>
         </div>
       </footer>
+
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center px-4 py-12">
+          <AuthPanel onClose={handleAuthClose} onSuccess={handleAuthSuccess} />
+        </div>
+      )}
     </div>
   );
 }

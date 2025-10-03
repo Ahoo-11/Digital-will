@@ -129,6 +129,7 @@ export default function VaultWizard({ onVaultCreated }) {
     if (!validateStep(3)) return;
 
     setIsProcessing(true);
+    setErrors((prev) => ({ ...prev, general: null }));
     try {
       // Generate vault ID
       const vaultId = generateVaultId();
@@ -139,27 +140,36 @@ export default function VaultWizard({ onVaultCreated }) {
       // Calculate lock time
       const lockTime = calculateLockTime(formData.lockTimeDays);
 
-      // Store vault data
+      // Prepare vault data
       const vault = {
         vaultId,
         encryptedData,
         lockTime,
         lockTimeDays: formData.lockTimeDays,
-        heirAddresses: formData.heirAddresses.filter(a => a.trim()),
+        heirAddresses: formData.heirAddresses.filter((a) => a.trim()),
         network: formData.network,
         createdAt: Date.now()
       };
 
-      setVaultData(vault);
-      setStep(5); // Move to final step
+      let persistedVault = vault;
 
-      // Callback to parent
       if (onVaultCreated) {
-        onVaultCreated(vault);
+        persistedVault = await Promise.resolve(onVaultCreated(vault)).catch((err) => {
+          throw err instanceof Error ? err : new Error('Failed to save vault');
+        });
+        if (!persistedVault) {
+          persistedVault = vault;
+        }
       }
+
+      setVaultData(persistedVault);
+      setStep(5); // Move to final step
     } catch (error) {
       console.error('Error creating vault:', error);
-      setErrors({ general: 'Failed to create vault. Please try again.' });
+      setErrors((prev) => ({
+        ...prev,
+        general: error.message || 'Failed to create vault. Please try again.'
+      }));
     } finally {
       setIsProcessing(false);
     }

@@ -5,7 +5,7 @@ import axios from 'axios';
 
 const API_BASE_URL = '/api';
 
-export default function TransactionBuilder({ vaultData }) {
+export default function TransactionBuilder({ vaultData, authToken, onVaultUpdated }) {
   const [fundingAddress, setFundingAddress] = useState('');
   const [transaction, setTransaction] = useState(null);
   const [isBuilding, setIsBuilding] = useState(false);
@@ -20,19 +20,48 @@ export default function TransactionBuilder({ vaultData }) {
       return;
     }
 
+    if (!authToken) {
+      setError('Authentication required. Please sign in again.');
+      return;
+    }
+
     setIsBuilding(true);
     setError(null);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/vault/create`, {
-        encryptedData: vaultData.encryptedData,
-        heirAddresses: vaultData.heirAddresses,
-        lockTime: vaultData.lockTime,
-        fundingAddress: fundingAddress,
-        network: vaultData.network
-      });
+      const response = await axios.post(
+        `${API_BASE_URL}/vault/create`,
+        {
+          vaultId: vaultData.vaultId,
+          encryptedData: vaultData.encryptedData,
+          heirAddresses: vaultData.heirAddresses,
+          lockTime: vaultData.lockTime,
+          fundingAddress: fundingAddress,
+          network: vaultData.network
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`
+          }
+        }
+      );
 
       setTransaction(response.data.transaction);
+
+      if (onVaultUpdated) {
+        try {
+          await onVaultUpdated(vaultData.vaultId, {
+            status: 'built',
+            lockTime: response.data.transaction?.lockTime,
+            metadata: {
+              transaction: response.data.transaction,
+              inscription: response.data.inscription || null
+            }
+          });
+        } catch (updateError) {
+          console.error('Failed to update vault record:', updateError);
+        }
+      }
     } catch (err) {
       console.error('Error building transaction:', err);
       setError(err.response?.data?.error || 'Failed to build transaction');
@@ -46,7 +75,14 @@ export default function TransactionBuilder({ vaultData }) {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/address/${fundingAddress}/utxos?network=${vaultData.network}`
+        `${API_BASE_URL}/address/${fundingAddress}/utxos?network=${vaultData.network}`,
+        {
+          headers: authToken
+            ? {
+                Authorization: `Bearer ${authToken}`
+              }
+            : undefined
+        }
       );
       setUtxos(response.data);
     } catch (err) {

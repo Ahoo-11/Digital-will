@@ -1,21 +1,94 @@
-import { useState } from 'react';
-import { Shield, Github, ExternalLink } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Shield, Github, ExternalLink, LogOut, Loader2, AlertCircle } from 'lucide-react';
 import VaultWizard from './components/VaultWizard';
 import TransactionBuilder from './components/TransactionBuilder';
+import VaultDashboard from './components/VaultDashboard';
+import HeirRecovery from './components/HeirRecovery';
+import AuthPanel from './components/AuthPanel.jsx';
+import { useAuth } from './context/AuthContext.jsx';
+import { useVaults } from './hooks/useVaults.js';
 
 function App() {
+  const { user, session, loading: authLoading, signOut } = useAuth();
+  const { vaults, loading: vaultsLoading, error: vaultsError, createVault, deleteVault } = useVaults(user);
   const [currentView, setCurrentView] = useState('home');
   const [vaultData, setVaultData] = useState(null);
+  const [activeTool, setActiveTool] = useState('build');
+  const [actionError, setActionError] = useState(null);
 
-  const handleVaultCreated = (vault) => {
-    setVaultData(vault);
-    setCurrentView('transaction');
+  useEffect(() => {
+    if (vaultData) {
+      const updated = vaults.find((vault) => vault.vaultId === vaultData.vaultId);
+      if (updated) {
+        setVaultData(updated);
+      }
+    }
+  }, [vaults]);
+
+  const isDashboardAvailable = useMemo(() => vaults.length > 0, [vaults]);
+
+  const handleVaultCreated = async (vault) => {
+    setActionError(null);
+    try {
+      const saved = await createVault(vault);
+      setVaultData(saved);
+      setActiveTool('build');
+      setCurrentView('vaultTools');
+      return saved;
+    } catch (error) {
+      setActionError(error.message || 'Failed to save vault.');
+      throw error;
+    }
   };
 
   const resetApp = () => {
     setVaultData(null);
     setCurrentView('home');
   };
+
+  const handleManageVaults = () => {
+    setCurrentView('dashboard');
+  };
+
+  const handleSelectVault = (vault) => {
+    setVaultData(vault);
+    setActiveTool('build');
+    setCurrentView('vaultTools');
+  };
+
+  const handleDeleteVault = async (vault) => {
+    if (!vault) return;
+    setActionError(null);
+    try {
+      await deleteVault(vault);
+      if (vaultData?.vaultId === vault.vaultId) {
+        setVaultData(null);
+        setCurrentView('dashboard');
+      }
+    } catch (error) {
+      setActionError(error.message || 'Failed to delete vault.');
+    }
+  };
+
+  const handleSignOut = async () => {
+    setActionError(null);
+    await signOut();
+    setVaultData(null);
+    setCurrentView('home');
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center text-gray-400">
+        <Loader2 className="w-8 h-8 animate-spin mb-3" />
+        Loading Aeturnum...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthPanel />;
+  }
 
   return (
     <div className="min-h-screen">
@@ -30,29 +103,51 @@ function App() {
                 <p className="text-sm text-gray-400">Trustless Digital Dead Man's Switch</p>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <a
-                href="https://github.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                <Github className="w-5 h-5" />
-              </a>
-              <a
-                href="https://signetfaucet.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-gray-400 hover:text-white transition-colors flex items-center"
-              >
-                Get Signet Coins
-                <ExternalLink className="w-4 h-4 ml-1" />
-              </a>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 text-sm">
+              <div className="flex items-center space-x-4">
+                <a
+                  href="https://github.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <Github className="w-5 h-5" />
+                </a>
+                <a
+                  href="https://signetfaucet.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-gray-400 hover:text-white transition-colors flex items-center"
+                >
+                  Get Signet Coins
+                  <ExternalLink className="w-4 h-4 ml-1" />
+                </a>
+                {isDashboardAvailable && (
+                  <button
+                    onClick={handleManageVaults}
+                    className="btn-secondary text-sm"
+                  >
+                    Vault Dashboard
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <div className="text-white font-medium">{user.email}</div>
+                  <div className="text-xs text-gray-400">Signed in</div>
+                </div>
+                <button
+                  onClick={handleSignOut}
+                  className="btn-secondary text-sm inline-flex items-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </header>
-
       {/* Main Content */}
       <main className="container mx-auto px-4 py-12">
         {currentView === 'home' && (
@@ -68,12 +163,22 @@ function App() {
                 Store encrypted messages on Bitcoin and automatically release them to your heirs
                 using time-locked transactions and Ordinal inscriptions.
               </p>
-              <button
-                onClick={() => setCurrentView('create')}
-                className="btn-primary text-lg px-8 py-4"
-              >
-                Create Your Vault
-              </button>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  onClick={() => setCurrentView('create')}
+                  className="btn-primary text-lg px-8 py-4"
+                >
+                  Create Your Vault
+                </button>
+                {isDashboardAvailable && (
+                  <button
+                    onClick={handleManageVaults}
+                    className="btn-secondary text-lg px-8 py-4"
+                  >
+                    Manage Existing Vaults
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Features */}
@@ -181,18 +286,76 @@ function App() {
           </div>
         )}
 
-        {currentView === 'transaction' && vaultData && (
-          <div className="animate-fade-in">
+        {currentView === 'dashboard' && (
+          <div className="max-w-4xl mx-auto animate-fade-in">
             <button
-              onClick={resetApp}
+              onClick={() => setCurrentView('home')}
               className="mb-6 text-gray-400 hover:text-white transition-colors"
             >
-              ← Create New Vault
+              ← Back to Home
             </button>
-            <TransactionBuilder vaultData={vaultData} />
+            <h2 className="text-3xl font-bold mb-6">Vault Dashboard</h2>
+            <VaultDashboard
+              vaults={vaults}
+              loading={vaultsLoading}
+              error={vaultsError || actionError}
+              onSelectVault={handleSelectVault}
+              onDeleteVault={handleDeleteVault}
+            />
+          </div>
+        )}
+
+        {currentView === 'vaultTools' && vaultData && (
+          <div className="animate-fade-in">
+            <button
+              onClick={() => setCurrentView('dashboard')}
+              className="mb-6 text-gray-400 hover:text-white transition-colors"
+            >
+              ← Back to Dashboard
+            </button>
+            <div className="flex items-center gap-3 mb-6">
+              <button
+                onClick={() => setActiveTool('build')}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  activeTool === 'build' ? 'bg-red-500 text-white' : 'bg-white/10 text-gray-300'
+                }`}
+              >
+                Build Transaction
+              </button>
+              <button
+                onClick={() => setActiveTool('recover')}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  activeTool === 'recover' ? 'bg-red-500 text-white' : 'bg-white/10 text-gray-300'
+                }`}
+              >
+                Heir Recovery
+              </button>
+              <div className="ml-auto">
+                <button
+                  onClick={resetApp}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  Create New Vault →
+                </button>
+              </div>
+            </div>
+            {activeTool === 'build' ? (
+              <TransactionBuilder vaultData={vaultData} authToken={session?.access_token} />
+            ) : (
+              <HeirRecovery vault={vaultData} />
+            )}
           </div>
         )}
       </main>
+
+      {(vaultsError || actionError) && currentView !== 'dashboard' && (
+        <div className="container mx-auto px-4">
+          <div className="mt-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3 text-red-300 text-sm">
+            <AlertCircle className="w-5 h-5" />
+            <span>{actionError || vaultsError}</span>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-white/10 glass-dark mt-20">
